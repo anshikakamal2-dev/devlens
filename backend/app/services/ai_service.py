@@ -1,100 +1,344 @@
-# =====================================================
-# COMMIT EXPLANATION
-# =====================================================
+import os
+from typing import Optional
 
-def explain_commit(commit_message: str) -> str:
+# OpenAI is optional.
+# DevLens will still work if the package/key is unavailable.
+try:
+    from openai import OpenAI
+except ImportError:
+    OpenAI = None
 
-    message = commit_message.lower().strip()
+
+# =========================================================
+# CONFIGURATION
+# =========================================================
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_MODEL = os.getenv(
+    "OPENAI_MODEL",
+    "gpt-4o-mini",
+)
+
+
+def get_openai_client() -> Optional[object]:
+    """
+    Create an OpenAI client only when the SDK and API key
+    are available.
+    """
+
+    if OpenAI is None:
+        return None
+
+    if not OPENAI_API_KEY:
+        return None
+
+    try:
+        return OpenAI(
+            api_key=OPENAI_API_KEY
+        )
+    except Exception as error:
+        print(
+            "OPENAI CLIENT ERROR:",
+            repr(error)
+        )
+        return None
+
+
+# =========================================================
+# LOCAL COMMIT ANALYSIS
+# =========================================================
+
+def local_commit_explanation(
+    commit_message: str
+) -> str:
+
+    original_message = commit_message.strip()
+    message = original_message.lower()
+
+    if not message:
+        return (
+            "What it does: No commit message was provided.\n\n"
+            "Why it may be useful: A descriptive commit message "
+            "helps developers understand the purpose of a change.\n\n"
+            "Suggestion: Use a clear action-oriented message such as "
+            "\"Add GitHub commit analytics\"."
+        )
 
     explanation = []
 
-    # What the commit likely does
+    # -----------------------------------------------------
+    # Determine commit type
+    # -----------------------------------------------------
+
     if any(
         word in message
-        for word in ["fix", "bug", "error", "issue"]
+        for word in [
+            "fix",
+            "bug",
+            "error",
+            "issue",
+            "resolve",
+            "repair",
+        ]
     ):
-        explanation.append(
-            "What it does: This commit likely fixes a bug, "
-            "error, or issue in the application."
+        what_it_does = (
+            "This commit appears to fix a bug, error, "
+            "or unexpected behavior in the application."
         )
 
     elif any(
         word in message
-        for word in ["add", "create", "implement"]
+        for word in [
+            "add",
+            "create",
+            "implement",
+            "introduce",
+            "feature",
+        ]
     ):
-        explanation.append(
-            "What it does: This commit likely adds or implements "
-            "a new feature or functionality."
+        what_it_does = (
+            "This commit appears to add or implement "
+            "new functionality in the project."
         )
 
     elif any(
         word in message
-        for word in ["update", "change", "modify"]
+        for word in [
+            "update",
+            "change",
+            "modify",
+            "improve",
+            "enhance",
+        ]
     ):
-        explanation.append(
-            "What it does: This commit likely updates or modifies "
-            "an existing part of the application."
+        what_it_does = (
+            "This commit appears to update or improve "
+            "an existing part of the project."
         )
 
     elif any(
         word in message
-        for word in ["remove", "delete"]
+        for word in [
+            "remove",
+            "delete",
+            "drop",
+        ]
     ):
-        explanation.append(
-            "What it does: This commit likely removes an existing "
-            "feature, file, or piece of functionality."
+        what_it_does = (
+            "This commit appears to remove an existing "
+            "feature, file, dependency, or piece of code."
         )
 
     elif any(
         word in message
-        for word in ["refactor", "cleanup", "clean"]
+        for word in [
+            "refactor",
+            "cleanup",
+            "clean",
+            "restructure",
+        ]
     ):
-        explanation.append(
-            "What it does: This commit likely improves or reorganizes "
-            "existing code without changing its main functionality."
+        what_it_does = (
+            "This commit appears to reorganize or clean up "
+            "existing code without primarily introducing new functionality."
         )
 
     else:
-        explanation.append(
-            "What it does: The commit appears to make a change "
-            "to the project, but the exact change cannot be determined "
+        what_it_does = (
+            "This commit appears to make a change to the project, "
+            "but the exact implementation cannot be determined "
             "from the commit message alone."
         )
 
-    # Why it may be useful
     explanation.append(
-        "Why it may be useful: The change may improve the project's "
-        "functionality, maintainability, or user experience."
+        f"What it does: {what_it_does}"
     )
 
-    # Commit quality
-    words = message.split()
+    # -----------------------------------------------------
+    # Technology hints
+    # -----------------------------------------------------
 
-    if len(words) >= 3:
-        explanation.append(
-            "Commit quality: The message provides some useful information "
-            "about the change."
-        )
-    else:
-        explanation.append(
-            "Commit quality: The message is too short and could be "
-            "more descriptive."
+    technologies = []
+
+    technology_map = {
+        "github": "GitHub integration",
+        "api": "API functionality",
+        "frontend": "frontend functionality",
+        "backend": "backend functionality",
+        "database": "database functionality",
+        "sql": "SQL/database functionality",
+        "react": "React frontend functionality",
+        "next": "Next.js functionality",
+        "nextjs": "Next.js functionality",
+        "fastapi": "FastAPI backend functionality",
+        "python": "Python functionality",
+        "typescript": "TypeScript functionality",
+        "javascript": "JavaScript functionality",
+        "css": "UI/styling functionality",
+        "auth": "authentication functionality",
+        "login": "authentication functionality",
+        "resume": "resume-analysis functionality",
+        "leetcode": "LeetCode integration",
+        "commit": "commit-analysis functionality",
+    }
+
+    for keyword, description in technology_map.items():
+        if keyword in message:
+            technologies.append(description)
+
+    if technologies:
+        unique_technologies = list(
+            dict.fromkeys(technologies)
         )
 
-    # Improvement suggestion
+        explanation.append(
+            "Likely area affected: " +
+            ", ".join(unique_technologies) +
+            "."
+        )
+
+    # -----------------------------------------------------
+    # Why useful
+    # -----------------------------------------------------
+
     explanation.append(
-        "Suggestion: Use a clear action-oriented commit message that "
-        "briefly describes the specific change."
+        "Why it may be useful: The change can improve "
+        "functionality, maintainability, reliability, "
+        "developer experience, or user experience depending "
+        "on the actual implementation."
+    )
+
+    # -----------------------------------------------------
+    # Commit quality
+    # -----------------------------------------------------
+
+    words = original_message.split()
+
+    if len(words) >= 6:
+        quality = (
+            "The commit message is reasonably descriptive "
+            "and provides useful context about the change."
+        )
+
+    elif len(words) >= 3:
+        quality = (
+            "The commit message provides some context, "
+            "but it could be more specific about what changed."
+        )
+
+    else:
+        quality = (
+            "The commit message is very short and does not "
+            "provide enough context about the actual change."
+        )
+
+    explanation.append(
+        f"Commit quality: {quality}"
+    )
+
+    # -----------------------------------------------------
+    # Suggestion
+    # -----------------------------------------------------
+
+    explanation.append(
+        "Suggestion: Use a concise, action-oriented message "
+        "that describes the specific change, for example "
+        "\"Add GitHub commit analytics\" or "
+        "\"Fix repository score calculation\"."
     )
 
     return "\n\n".join(explanation)
 
 
-# =====================================================
-# AI CAREER COACH
-# =====================================================
+# =========================================================
+# AI COMMIT EXPLANATION
+# =========================================================
 
-def career_coach(
+def explain_commit(
+    commit_message: str
+) -> str:
+
+    message = commit_message.strip()
+
+    if not message:
+        return local_commit_explanation(message)
+
+    client = get_openai_client()
+
+    # -----------------------------------------------------
+    # AI unavailable → local fallback
+    # -----------------------------------------------------
+
+    if client is None:
+        print(
+            "AI unavailable. Using local commit explanation."
+        )
+
+        return local_commit_explanation(message)
+
+    # -----------------------------------------------------
+    # Try real AI
+    # -----------------------------------------------------
+
+    try:
+        response = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an experienced software engineer "
+                        "reviewing Git commits. Explain commit messages "
+                        "for a developer dashboard. Be concise, practical "
+                        "and technically useful. Do not claim specific "
+                        "code changes that cannot be inferred from the "
+                        "commit message."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Analyze this Git commit message:\n\n"
+                        f"{message}\n\n"
+                        "Return:\n"
+                        "1. What it likely does\n"
+                        "2. Why it may be useful\n"
+                        "3. Commit quality\n"
+                        "4. One improvement suggestion"
+                    ),
+                },
+            ],
+            temperature=0.3,
+            max_tokens=300,
+        )
+
+        ai_text = response.choices[0].message.content
+
+        if ai_text and ai_text.strip():
+            return ai_text.strip()
+
+    except Exception as error:
+        print(
+            "OPENAI COMMIT ERROR:",
+            repr(error)
+        )
+
+    # -----------------------------------------------------
+    # AI failed → fallback
+    # -----------------------------------------------------
+
+    print(
+        "Using local fallback for commit explanation."
+    )
+
+    return local_commit_explanation(message)
+
+
+# =========================================================
+# LOCAL CAREER COACH
+# =========================================================
+
+def local_career_coach(
     readiness_score: int,
     readiness_label: str,
     repositories: int,
@@ -107,54 +351,57 @@ def career_coach(
 
     advice = []
 
-    # =================================================
-    # 1. OVERALL ASSESSMENT
-    # =================================================
+    # -----------------------------------------------------
+    # Overall assessment
+    # -----------------------------------------------------
 
     if readiness_score >= 80:
         overall = (
             "Your profile is looking strong for internship applications. "
-            "Focus now on polishing your resume, projects and interview preparation."
+            "Focus on polishing your resume, projects and interview preparation."
         )
 
     elif readiness_score >= 60:
         overall = (
             "Your profile has a good foundation for internships, "
-            "but there are some areas that should be improved before applying aggressively."
+            "but several areas should be improved before applying aggressively."
         )
 
     elif readiness_score >= 40:
         overall = (
-            "Your profile is developing, but you should strengthen your "
+            "Your profile is developing, but you should strengthen "
             "projects, coding activity and software engineering fundamentals."
         )
 
     else:
         overall = (
-            "Your profile needs significant improvement before you are "
-            "fully internship-ready. Focus on building projects and consistent coding habits."
+            "Your profile needs improvement before you are fully "
+            "internship-ready. Focus on strong projects and consistent coding."
         )
 
     advice.append(
         f"1. Overall Assessment\n"
-        f"Internship Readiness: {readiness_score}/100 ({readiness_label})\n"
+        f"Internship Readiness: {readiness_score}/100 "
+        f"({readiness_label})\n"
         f"{overall}"
     )
 
-    # =================================================
-    # 2. STRONG AREAS
-    # =================================================
+    # -----------------------------------------------------
+    # Strong areas
+    # -----------------------------------------------------
 
     strong_areas = []
 
     if repositories >= 3:
         strong_areas.append(
-            f"You have {repositories} repositories, showing project activity."
+            f"You have {repositories} repositories, "
+            "showing project activity."
         )
 
     if total_commits >= 30:
         strong_areas.append(
-            f"You have {total_commits} commits, showing development activity."
+            f"You have {total_commits} commits, "
+            "showing consistent development activity."
         )
 
     if average_repo_score >= 70:
@@ -170,7 +417,13 @@ def career_coach(
     if total_stars > 0:
         strong_areas.append(
             f"Your projects have received {total_stars} star(s), "
-            "which indicates some external interest."
+            "indicating external interest."
+        )
+
+    if total_forks > 0:
+        strong_areas.append(
+            f"Your projects have received {total_forks} fork(s), "
+            "showing that some repositories are being reused or explored."
         )
 
     if not strong_areas:
@@ -187,15 +440,15 @@ def career_coach(
         )
     )
 
-    # =================================================
-    # 3. WEAK AREAS
-    # =================================================
+    # -----------------------------------------------------
+    # Weak areas
+    # -----------------------------------------------------
 
     weak_areas = []
 
     if repositories < 3:
         weak_areas.append(
-            "Build more meaningful projects instead of relying on very few repositories."
+            "Build more meaningful technical projects."
         )
 
     if total_commits < 30:
@@ -205,18 +458,20 @@ def career_coach(
 
     if average_repo_score < 60:
         weak_areas.append(
-            "Improve README files, documentation, repository structure and project presentation."
+            "Improve README files, documentation, repository structure "
+            "and project presentation."
         )
 
     if average_commit_quality < 60:
         weak_areas.append(
-            "Improve commit messages by using clear, specific and action-oriented descriptions."
+            "Improve commit messages using clear, specific "
+            "and action-oriented descriptions."
         )
 
     if total_stars == 0:
         weak_areas.append(
-            "Your projects currently have no stars. Improve project quality and presentation "
-            "and share useful projects publicly."
+            "Improve project quality and presentation before sharing "
+            "projects publicly."
         )
 
     if not weak_areas:
@@ -233,13 +488,13 @@ def career_coach(
         )
     )
 
-    # =================================================
-    # 4. SKILLS TO IMPROVE
-    # =================================================
+    # -----------------------------------------------------
+    # Skills
+    # -----------------------------------------------------
 
     skills = [
         "Data Structures & Algorithms",
-        "Problem solving and competitive programming",
+        "Problem solving",
         "Git and GitHub workflow",
         "REST APIs and backend development",
         "Database fundamentals (SQL)",
@@ -260,9 +515,9 @@ def career_coach(
         )
     )
 
-    # =================================================
-    # 5. PROJECT RECOMMENDATIONS
-    # =================================================
+    # -----------------------------------------------------
+    # Project recommendations
+    # -----------------------------------------------------
 
     projects = [
         "AI-powered developer analytics dashboard",
@@ -272,8 +527,8 @@ def career_coach(
 
     if average_repo_score < 70:
         projects.append(
-            "Improve one existing project with better README, "
-            "screenshots, documentation and deployment"
+            "Improve an existing project with better README, "
+            "screenshots, documentation and deployment."
         )
 
     advice.append(
@@ -284,9 +539,9 @@ def career_coach(
         )
     )
 
-    # =================================================
-    # 6. 30-DAY ACTION PLAN
-    # =================================================
+    # -----------------------------------------------------
+    # 30-day plan
+    # -----------------------------------------------------
 
     action_plan = [
         "Days 1-7: Revise arrays, strings, hashing, linked lists and stacks.",
@@ -305,9 +560,9 @@ def career_coach(
         )
     )
 
-    # =================================================
-    # FINAL RECOMMENDATION
-    # =================================================
+    # -----------------------------------------------------
+    # Final recommendation
+    # -----------------------------------------------------
 
     advice.append(
         "🎯 Final Recommendation\n"
@@ -317,3 +572,133 @@ def career_coach(
     )
 
     return "\n\n".join(advice)
+
+
+# =========================================================
+# AI CAREER COACH
+# =========================================================
+
+def career_coach(
+    readiness_score: int,
+    readiness_label: str,
+    repositories: int,
+    total_stars: int,
+    total_forks: int,
+    total_commits: int,
+    average_repo_score: float,
+    average_commit_quality: float,
+) -> str:
+
+    client = get_openai_client()
+
+    # -----------------------------------------------------
+    # AI unavailable → local career coach
+    # -----------------------------------------------------
+
+    if client is None:
+        print(
+            "AI unavailable. Using local career coach."
+        )
+
+        return local_career_coach(
+            readiness_score,
+            readiness_label,
+            repositories,
+            total_stars,
+            total_forks,
+            total_commits,
+            average_repo_score,
+            average_commit_quality,
+        )
+
+    # -----------------------------------------------------
+    # Try real AI
+    # -----------------------------------------------------
+
+    try:
+        prompt = f"""
+Analyze this developer's GitHub profile and provide practical
+internship-focused career advice.
+
+Internship readiness:
+{readiness_score}/100 ({readiness_label})
+
+Repositories:
+{repositories}
+
+Stars:
+{total_stars}
+
+Forks:
+{total_forks}
+
+Total commits:
+{total_commits}
+
+Average repository score:
+{average_repo_score:.1f}/100
+
+Average commit quality:
+{average_commit_quality:.1f}/100
+
+Provide:
+1. Overall assessment
+2. Strong areas
+3. Weak areas
+4. Skills to improve
+5. Project recommendations
+6. A practical 30-day action plan
+
+Keep the advice realistic for a computer science student.
+Do not invent achievements or skills that are not present.
+"""
+
+        response = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a practical software engineering "
+                        "career coach helping a computer science student "
+                        "prepare for internships."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": prompt,
+                },
+            ],
+            temperature=0.4,
+            max_tokens=900,
+        )
+
+        ai_text = response.choices[0].message.content
+
+        if ai_text and ai_text.strip():
+            return ai_text.strip()
+
+    except Exception as error:
+        print(
+            "OPENAI CAREER COACH ERROR:",
+            repr(error)
+        )
+
+    # -----------------------------------------------------
+    # AI failed → local fallback
+    # -----------------------------------------------------
+
+    print(
+        "Using local fallback for career coach."
+    )
+
+    return local_career_coach(
+        readiness_score,
+        readiness_label,
+        repositories,
+        total_stars,
+        total_forks,
+        total_commits,
+        average_repo_score,
+        average_commit_quality,
+    )

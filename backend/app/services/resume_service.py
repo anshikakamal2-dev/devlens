@@ -1,38 +1,172 @@
+import os
 import re
 from io import BytesIO
 
 from pypdf import PdfReader
 from docx import Document
 
+import pytesseract
+from pdf2image import convert_from_bytes
+
+
+# =========================================================
+# WINDOWS OCR CONFIGURATION
+# =========================================================
+
+TESSERACT_PATH = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+
+POPPLER_PATH = (
+    r"C:\Users\anshi\AppData\Local\Microsoft\WinGet\Packages"
+    r"\oschwartz10612.Poppler_Microsoft.Winget.Source_8wekyb3d8bbwe"
+    r"\poppler-25.07.0\Library\bin"
+)
+
+
+if os.path.exists(TESSERACT_PATH):
+    pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
+
+
+# =========================================================
+# PDF TEXT EXTRACTION
+# =========================================================
 
 def extract_pdf_text(file_bytes: bytes) -> str:
-    reader = PdfReader(BytesIO(file_bytes))
+    """
+    First try normal PDF text extraction using pypdf.
+    If no text is found, automatically use OCR.
+    """
 
-    text = []
+    # -----------------------------------------------------
+    # 1. Normal PDF text extraction
+    # -----------------------------------------------------
 
-    for page in reader.pages:
-        page_text = page.extract_text()
+    try:
+        reader = PdfReader(BytesIO(file_bytes))
 
-        if page_text:
-            text.append(page_text)
+        text_parts = []
 
-    return "\n".join(text)
+        for page in reader.pages:
+            page_text = page.extract_text()
 
+            if page_text:
+                page_text = page_text.strip()
+
+                if page_text:
+                    text_parts.append(page_text)
+
+        extracted_text = "\n".join(text_parts).strip()
+
+        if extracted_text:
+            print("PDF TEXT EXTRACTION: successful")
+            return extracted_text
+
+    except Exception as error:
+        print("PDF TEXT EXTRACTION ERROR:", repr(error))
+
+    # -----------------------------------------------------
+    # 2. OCR fallback
+    # -----------------------------------------------------
+
+    print("PDF contains no readable text. Starting OCR...")
+
+    if not os.path.exists(TESSERACT_PATH):
+        print("Tesseract not found:", TESSERACT_PATH)
+        return ""
+
+    if not os.path.exists(POPPLER_PATH):
+        print("Poppler not found:", POPPLER_PATH)
+        return ""
+
+    try:
+        images = convert_from_bytes(
+            file_bytes,
+            dpi=200,
+            poppler_path=POPPLER_PATH,
+        )
+
+        ocr_parts = []
+
+        for index, image in enumerate(images):
+            print(f"OCR processing page {index + 1}/{len(images)}...")
+
+            page_text = pytesseract.image_to_string(
+                image,
+                config="--psm 6",
+            )
+
+            if page_text:
+                page_text = page_text.strip()
+
+                if page_text:
+                    ocr_parts.append(page_text)
+
+        return "\n".join(ocr_parts).strip()
+
+    except Exception as error:
+        print("PDF OCR ERROR:", repr(error))
+        return ""
+
+
+# =========================================================
+# DOCX TEXT EXTRACTION
+# =========================================================
 
 def extract_docx_text(file_bytes: bytes) -> str:
-    document = Document(BytesIO(file_bytes))
+    """
+    Extract text from normal paragraphs and tables.
+    """
 
-    text = []
+    try:
+        document = Document(BytesIO(file_bytes))
 
-    for paragraph in document.paragraphs:
-        if paragraph.text.strip():
-            text.append(paragraph.text)
+        text_parts = []
 
-    return "\n".join(text)
+        # -------------------------------------------------
+        # Paragraphs
+        # -------------------------------------------------
+
+        for paragraph in document.paragraphs:
+            text = paragraph.text.strip()
+
+            if text:
+                text_parts.append(text)
+
+        # -------------------------------------------------
+        # Tables
+        # -------------------------------------------------
+
+        for table in document.tables:
+
+            for row in table.rows:
+
+                row_text = []
+
+                for cell in row.cells:
+                    cell_text = cell.text.strip()
+
+                    if cell_text:
+                        row_text.append(cell_text)
+
+                if row_text:
+                    text_parts.append(" | ".join(row_text))
+
+        return "\n".join(text_parts).strip()
+
+    except Exception as error:
+        print("DOCX EXTRACTION ERROR:", repr(error))
+        return ""
 
 
-def extract_resume_text(filename: str, file_bytes: bytes) -> str:
-    filename = filename.lower()
+# =========================================================
+# MAIN RESUME TEXT EXTRACTION
+# =========================================================
+
+def extract_resume_text(
+    filename: str,
+    file_bytes: bytes,
+) -> str:
+
+    filename = filename.lower().strip()
 
     if filename.endswith(".pdf"):
         return extract_pdf_text(file_bytes)
@@ -45,27 +179,32 @@ def extract_resume_text(filename: str, file_bytes: bytes) -> str:
     )
 
 
+# =========================================================
+# RESUME ANALYZER
+# =========================================================
+
 def analyze_resume_text(text: str) -> dict:
+
     text_lower = text.lower()
 
     score = 0
     suggestions = []
 
-    # -----------------------------------------
-    # 1. Contact Information - 15 points
-    # -----------------------------------------
+    # =====================================================
+    # 1. CONTACT INFORMATION - 15 POINTS
+    # =====================================================
 
     has_email = bool(
         re.search(
             r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
-            text
+            text,
         )
     )
 
     has_phone = bool(
         re.search(
-            r"(\+?\d[\d\s\-()]{8,}\d)",
-            text
+            r"\+?\d[\d\s\-()]{8,}\d",
+            text,
         )
     )
 
@@ -87,15 +226,17 @@ def analyze_resume_text(text: str) -> dict:
 
     score += contact_score
 
-    # -----------------------------------------
-    # 2. Summary / Objective - 10 points
-    # -----------------------------------------
+    # =====================================================
+    # 2. SUMMARY / OBJECTIVE - 10 POINTS
+    # =====================================================
 
     summary_keywords = [
         "summary",
         "objective",
         "profile",
-        "about me"
+        "about me",
+        "career objective",
+        "professional summary",
     ]
 
     has_summary = any(
@@ -110,15 +251,18 @@ def analyze_resume_text(text: str) -> dict:
             "Add a short professional summary focused on your career goals."
         )
 
-    # -----------------------------------------
-    # 3. Skills - 15 points
-    # -----------------------------------------
+    # =====================================================
+    # 3. SKILLS - 15 POINTS
+    # =====================================================
 
     skill_keywords = [
         "skills",
         "technical skills",
+        "technical skill",
         "technologies",
-        "programming languages"
+        "programming languages",
+        "tech stack",
+        "technical expertise",
     ]
 
     has_skills_section = any(
@@ -133,14 +277,16 @@ def analyze_resume_text(text: str) -> dict:
             "Add a dedicated Technical Skills section."
         )
 
-    # -----------------------------------------
-    # 4. Projects - 20 points
-    # -----------------------------------------
+    # =====================================================
+    # 4. PROJECTS - 20 POINTS
+    # =====================================================
 
     project_keywords = [
         "projects",
         "project",
-        "github"
+        "github",
+        "personal projects",
+        "academic projects",
     ]
 
     has_projects = any(
@@ -155,17 +301,20 @@ def analyze_resume_text(text: str) -> dict:
             "Add 2-3 strong technical projects with technologies and achievements."
         )
 
-    # -----------------------------------------
-    # 5. Education - 10 points
-    # -----------------------------------------
+    # =====================================================
+    # 5. EDUCATION - 10 POINTS
+    # =====================================================
 
     education_keywords = [
         "education",
         "b.tech",
         "btech",
         "bachelor",
+        "bachelor of technology",
         "university",
-        "college"
+        "college",
+        "degree",
+        "academic",
     ]
 
     has_education = any(
@@ -180,15 +329,17 @@ def analyze_resume_text(text: str) -> dict:
             "Add your education details."
         )
 
-    # -----------------------------------------
-    # 6. Experience - 10 points
-    # -----------------------------------------
+    # =====================================================
+    # 6. EXPERIENCE - 10 POINTS
+    # =====================================================
 
     experience_keywords = [
         "experience",
         "internship",
         "intern",
-        "work experience"
+        "work experience",
+        "professional experience",
+        "employment",
     ]
 
     has_experience = any(
@@ -203,14 +354,16 @@ def analyze_resume_text(text: str) -> dict:
             "If you have internship or work experience, highlight it clearly."
         )
 
-    # -----------------------------------------
-    # 7. Developer Profiles - 5 points
-    # -----------------------------------------
+    # =====================================================
+    # 7. DEVELOPER PROFILES - 5 POINTS
+    # =====================================================
 
     profile_keywords = [
         "linkedin",
         "github",
-        "leetcode"
+        "leetcode",
+        "geeksforgeeks",
+        "codeforces",
     ]
 
     profile_count = sum(
@@ -225,14 +378,16 @@ def analyze_resume_text(text: str) -> dict:
             "Add relevant GitHub, LinkedIn and coding-profile links."
         )
 
-    # -----------------------------------------
-    # 8. Quantified Achievements - 5 points
-    # -----------------------------------------
+    # =====================================================
+    # 8. QUANTIFIED ACHIEVEMENTS - 5 POINTS
+    # =====================================================
 
     has_numbers = bool(
         re.search(
-            r"\b\d+%|\b\d+\+|\b\d+\s*(users|projects|members|requests|records)",
-            text_lower
+            r"\b\d+(?:\.\d+)?%|\b\d+\+|\b\d+\s+"
+            r"(?:users|projects|members|requests|records|"
+            r"students|clients|downloads)",
+            text_lower,
         )
     )
 
@@ -243,9 +398,9 @@ def analyze_resume_text(text: str) -> dict:
             "Use numbers and measurable results to describe achievements."
         )
 
-    # -----------------------------------------
-    # Final score
-    # -----------------------------------------
+    # =====================================================
+    # FINAL SCORE
+    # =====================================================
 
     score = min(score, 100)
 
@@ -258,6 +413,10 @@ def analyze_resume_text(text: str) -> dict:
     else:
         label = "Weak"
 
+    # =====================================================
+    # ADVICE
+    # =====================================================
+
     advice = (
         f"Resume Rating: {label}\n\n"
         f"Your resume scored {score}/100 based on its structure, "
@@ -265,11 +424,14 @@ def analyze_resume_text(text: str) -> dict:
     )
 
     if suggestions:
+
         advice += "Recommended Improvements:\n"
 
         for suggestion in suggestions:
             advice += f"- {suggestion}\n"
+
     else:
+
         advice += (
             "Your resume contains the major sections expected "
             "for an internship-focused technical resume. "
