@@ -1,3 +1,4 @@
+
 import os
 import re
 from io import BytesIO
@@ -10,20 +11,27 @@ from pdf2image import convert_from_bytes
 
 
 # =========================================================
-# WINDOWS OCR CONFIGURATION
+# OCR CONFIGURATION
 # =========================================================
 
-TESSERACT_PATH = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+# Windows local Tesseract path
+WINDOWS_TESSERACT_PATH = (
+    r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+)
 
-POPPLER_PATH = (
+# Windows local Poppler path
+WINDOWS_POPPLER_PATH = (
     r"C:\Users\anshi\AppData\Local\Microsoft\WinGet\Packages"
     r"\oschwartz10612.Poppler_Microsoft.Winget.Source_8wekyb3d8bbwe"
     r"\poppler-25.07.0\Library\bin"
 )
 
 
-if os.path.exists(TESSERACT_PATH):
-    pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
+# Configure Tesseract on Windows only when it exists.
+if os.path.exists(WINDOWS_TESSERACT_PATH):
+    pytesseract.pytesseract.tesseract_cmd = (
+        WINDOWS_TESSERACT_PATH
+    )
 
 
 # =========================================================
@@ -32,12 +40,22 @@ if os.path.exists(TESSERACT_PATH):
 
 def extract_pdf_text(file_bytes: bytes) -> str:
     """
-    First try normal PDF text extraction using pypdf.
-    If no text is found, automatically use OCR.
+    Extract text from a PDF.
+
+    First:
+        Try normal PDF text extraction using pypdf.
+
+    Fallback:
+        If no readable text is found, try OCR using
+        Tesseract + Poppler.
+
+    The function is designed to work on both:
+        - Windows development environment
+        - Linux/Render production environment
     """
 
     # -----------------------------------------------------
-    # 1. Normal PDF text extraction
+    # 1. NORMAL PDF TEXT EXTRACTION
     # -----------------------------------------------------
 
     try:
@@ -61,33 +79,83 @@ def extract_pdf_text(file_bytes: bytes) -> str:
             return extracted_text
 
     except Exception as error:
-        print("PDF TEXT EXTRACTION ERROR:", repr(error))
-
-    # -----------------------------------------------------
-    # 2. OCR fallback
-    # -----------------------------------------------------
-
-    print("PDF contains no readable text. Starting OCR...")
-
-    if not os.path.exists(TESSERACT_PATH):
-        print("Tesseract not found:", TESSERACT_PATH)
-        return ""
-
-    if not os.path.exists(POPPLER_PATH):
-        print("Poppler not found:", POPPLER_PATH)
-        return ""
-
-    try:
-        images = convert_from_bytes(
-            file_bytes,
-            dpi=200,
-            poppler_path=POPPLER_PATH,
+        print(
+            "PDF TEXT EXTRACTION ERROR:",
+            repr(error),
         )
 
-        ocr_parts = []
+    # -----------------------------------------------------
+    # 2. OCR FALLBACK
+    # -----------------------------------------------------
 
-        for index, image in enumerate(images):
-            print(f"OCR processing page {index + 1}/{len(images)}...")
+    print(
+        "PDF contains no readable text. "
+        "Starting OCR..."
+    )
+
+    # -----------------------------------------------------
+    # Check Tesseract
+    # -----------------------------------------------------
+
+    try:
+        pytesseract.get_tesseract_version()
+
+    except Exception:
+        print(
+            "Tesseract OCR is not available. "
+            "Skipping OCR."
+        )
+        return ""
+
+    # -----------------------------------------------------
+    # Convert PDF pages to images
+    # -----------------------------------------------------
+
+    try:
+
+        # Windows:
+        # Use explicitly configured Poppler path.
+        if os.path.exists(WINDOWS_POPPLER_PATH):
+
+            images = convert_from_bytes(
+                file_bytes,
+                dpi=200,
+                poppler_path=WINDOWS_POPPLER_PATH,
+            )
+
+        # Linux / Render:
+        # Expect Poppler binaries to be available
+        # through the system PATH.
+        else:
+
+            images = convert_from_bytes(
+                file_bytes,
+                dpi=200,
+            )
+
+    except Exception as error:
+
+        print(
+            "PDF TO IMAGE CONVERSION ERROR:",
+            repr(error),
+        )
+
+        return ""
+
+    # -----------------------------------------------------
+    # OCR each page
+    # -----------------------------------------------------
+
+    ocr_parts = []
+
+    for index, image in enumerate(images):
+
+        print(
+            f"OCR processing page "
+            f"{index + 1}/{len(images)}..."
+        )
+
+        try:
 
             page_text = pytesseract.image_to_string(
                 image,
@@ -95,16 +163,20 @@ def extract_pdf_text(file_bytes: bytes) -> str:
             )
 
             if page_text:
+
                 page_text = page_text.strip()
 
                 if page_text:
                     ocr_parts.append(page_text)
 
-        return "\n".join(ocr_parts).strip()
+        except Exception as error:
 
-    except Exception as error:
-        print("PDF OCR ERROR:", repr(error))
-        return ""
+            print(
+                f"OCR ERROR on page {index + 1}:",
+                repr(error),
+            )
+
+    return "\n".join(ocr_parts).strip()
 
 
 # =========================================================
@@ -113,11 +185,14 @@ def extract_pdf_text(file_bytes: bytes) -> str:
 
 def extract_docx_text(file_bytes: bytes) -> str:
     """
-    Extract text from normal paragraphs and tables.
+    Extract text from DOCX paragraphs and tables.
     """
 
     try:
-        document = Document(BytesIO(file_bytes))
+
+        document = Document(
+            BytesIO(file_bytes)
+        )
 
         text_parts = []
 
@@ -126,6 +201,7 @@ def extract_docx_text(file_bytes: bytes) -> str:
         # -------------------------------------------------
 
         for paragraph in document.paragraphs:
+
             text = paragraph.text.strip()
 
             if text:
@@ -142,18 +218,27 @@ def extract_docx_text(file_bytes: bytes) -> str:
                 row_text = []
 
                 for cell in row.cells:
+
                     cell_text = cell.text.strip()
 
                     if cell_text:
                         row_text.append(cell_text)
 
                 if row_text:
-                    text_parts.append(" | ".join(row_text))
+
+                    text_parts.append(
+                        " | ".join(row_text)
+                    )
 
         return "\n".join(text_parts).strip()
 
     except Exception as error:
-        print("DOCX EXTRACTION ERROR:", repr(error))
+
+        print(
+            "DOCX EXTRACTION ERROR:",
+            repr(error),
+        )
+
         return ""
 
 
@@ -165,17 +250,27 @@ def extract_resume_text(
     filename: str,
     file_bytes: bytes,
 ) -> str:
+    """
+    Extract text from PDF or DOCX resume.
+    """
 
     filename = filename.lower().strip()
 
     if filename.endswith(".pdf"):
-        return extract_pdf_text(file_bytes)
+
+        return extract_pdf_text(
+            file_bytes
+        )
 
     if filename.endswith(".docx"):
-        return extract_docx_text(file_bytes)
+
+        return extract_docx_text(
+            file_bytes
+        )
 
     raise ValueError(
-        "Unsupported file type. Please upload a PDF or DOCX file."
+        "Unsupported file type. "
+        "Please upload a PDF or DOCX file."
     )
 
 
@@ -184,6 +279,12 @@ def extract_resume_text(
 # =========================================================
 
 def analyze_resume_text(text: str) -> dict:
+    """
+    Analyze resume content and return:
+        - score
+        - label
+        - advice
+    """
 
     text_lower = text.lower()
 
@@ -196,7 +297,8 @@ def analyze_resume_text(text: str) -> dict:
 
     has_email = bool(
         re.search(
-            r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
+            r"[A-Za-z0-9._%+-]+"
+            r"@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
             text,
         )
     )
@@ -211,15 +313,21 @@ def analyze_resume_text(text: str) -> dict:
     contact_score = 0
 
     if has_email:
+
         contact_score += 8
+
     else:
+
         suggestions.append(
             "Add a professional email address."
         )
 
     if has_phone:
+
         contact_score += 7
+
     else:
+
         suggestions.append(
             "Add your phone number."
         )
@@ -245,10 +353,14 @@ def analyze_resume_text(text: str) -> dict:
     )
 
     if has_summary:
+
         score += 10
+
     else:
+
         suggestions.append(
-            "Add a short professional summary focused on your career goals."
+            "Add a short professional summary "
+            "focused on your career goals."
         )
 
     # =====================================================
@@ -271,8 +383,11 @@ def analyze_resume_text(text: str) -> dict:
     )
 
     if has_skills_section:
+
         score += 15
+
     else:
+
         suggestions.append(
             "Add a dedicated Technical Skills section."
         )
@@ -295,10 +410,14 @@ def analyze_resume_text(text: str) -> dict:
     )
 
     if has_projects:
+
         score += 20
+
     else:
+
         suggestions.append(
-            "Add 2-3 strong technical projects with technologies and achievements."
+            "Add 2-3 strong technical projects "
+            "with technologies and achievements."
         )
 
     # =====================================================
@@ -323,8 +442,11 @@ def analyze_resume_text(text: str) -> dict:
     )
 
     if has_education:
+
         score += 10
+
     else:
+
         suggestions.append(
             "Add your education details."
         )
@@ -348,10 +470,14 @@ def analyze_resume_text(text: str) -> dict:
     )
 
     if has_experience:
+
         score += 10
+
     else:
+
         suggestions.append(
-            "If you have internship or work experience, highlight it clearly."
+            "If you have internship or work experience, "
+            "highlight it clearly."
         )
 
     # =====================================================
@@ -372,10 +498,14 @@ def analyze_resume_text(text: str) -> dict:
     )
 
     if profile_count >= 2:
+
         score += 5
+
     else:
+
         suggestions.append(
-            "Add relevant GitHub, LinkedIn and coding-profile links."
+            "Add relevant GitHub, LinkedIn and "
+            "coding-profile links."
         )
 
     # =====================================================
@@ -384,18 +514,24 @@ def analyze_resume_text(text: str) -> dict:
 
     has_numbers = bool(
         re.search(
-            r"\b\d+(?:\.\d+)?%|\b\d+\+|\b\d+\s+"
-            r"(?:users|projects|members|requests|records|"
-            r"students|clients|downloads)",
+            r"\b\d+(?:\.\d+)?%"
+            r"|\b\d+\+"
+            r"|\b\d+\s+"
+            r"(?:users|projects|members|requests|"
+            r"records|students|clients|downloads)",
             text_lower,
         )
     )
 
     if has_numbers:
+
         score += 5
+
     else:
+
         suggestions.append(
-            "Use numbers and measurable results to describe achievements."
+            "Use numbers and measurable results "
+            "to describe achievements."
         )
 
     # =====================================================
@@ -405,12 +541,19 @@ def analyze_resume_text(text: str) -> dict:
     score = min(score, 100)
 
     if score >= 85:
+
         label = "Excellent"
+
     elif score >= 70:
+
         label = "Strong"
+
     elif score >= 55:
+
         label = "Needs Improvement"
+
     else:
+
         label = "Weak"
 
     # =====================================================
@@ -419,23 +562,30 @@ def analyze_resume_text(text: str) -> dict:
 
     advice = (
         f"Resume Rating: {label}\n\n"
-        f"Your resume scored {score}/100 based on its structure, "
-        f"technical content and internship-readiness signals.\n\n"
+        f"Your resume scored {score}/100 based on "
+        f"its structure, technical content and "
+        f"internship-readiness signals.\n\n"
     )
 
     if suggestions:
 
-        advice += "Recommended Improvements:\n"
+        advice += (
+            "Recommended Improvements:\n"
+        )
 
         for suggestion in suggestions:
-            advice += f"- {suggestion}\n"
+
+            advice += (
+                f"- {suggestion}\n"
+            )
 
     else:
 
         advice += (
-            "Your resume contains the major sections expected "
-            "for an internship-focused technical resume. "
-            "Continue improving measurable achievements and project depth."
+            "Your resume contains the major sections "
+            "expected for an internship-focused "
+            "technical resume. Continue improving "
+            "measurable achievements and project depth."
         )
 
     return {
@@ -443,3 +593,4 @@ def analyze_resume_text(text: str) -> dict:
         "label": label,
         "advice": advice,
     }
+
