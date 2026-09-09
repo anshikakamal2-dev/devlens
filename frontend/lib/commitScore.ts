@@ -1,13 +1,11 @@
-// frontend/lib/commitScore.ts
-
 export interface Commit {
   sha: string;
   commit: {
     message: string;
-    author: {
-      name: string;
-      email: string;
-      date: string;
+    author?: {
+      name?: string;
+      email?: string;
+      date?: string;
     };
   };
   html_url: string;
@@ -18,7 +16,6 @@ export interface CommitStats {
   goodCommits: number;
   weakCommits: number;
   qualityScore: number;
-
   messageClarity: number;
   meaningfulness: number;
   conventionalFormat: number;
@@ -27,9 +24,7 @@ export interface CommitStats {
 }
 
 export function analyzeCommitMessage(message: string) {
-  const firstLine = message
-    .split("\n")[0]
-    .trim();
+  const firstLine = message?.split("\n")[0]?.trim() ?? "";
 
   if (!firstLine) {
     return {
@@ -42,51 +37,38 @@ export function analyzeCommitMessage(message: string) {
     };
   }
 
-  // -------------------------------
-  // 1. MESSAGE CLARITY
-  // -------------------------------
-
+  // -----------------------------
+  // Message Clarity - 20
+  // -----------------------------
   let messageClarity = 0;
 
-  if (firstLine.length >= 10) {
-    messageClarity += 5;
-  }
+  if (firstLine.length >= 10) messageClarity += 5;
+  if (firstLine.length >= 20) messageClarity += 5;
+  if (firstLine.split(/\s+/).length >= 4) messageClarity += 5;
 
-  if (firstLine.length >= 20) {
-    messageClarity += 5;
-  }
-
-  if (firstLine.split(/\s+/).length >= 4) {
-    messageClarity += 5;
-  }
-
-  if (!/^(update|changes|change|stuff|work|test)$/i.test(firstLine)) {
-    messageClarity += 5;
-  }
-
-  // -------------------------------
-  // 2. MEANINGFULNESS
-  // -------------------------------
-
-  let meaningfulness = 0;
-
-  const weakWords = [
+  const vagueMessages = [
     "update",
     "updated",
     "changes",
     "change",
     "stuff",
     "work",
-    "testing",
     "test",
+    "testing",
     "fix",
+    "done",
   ];
 
-  const isWeakMessage = weakWords.includes(
-    firstLine.toLowerCase()
-  );
+  if (!vagueMessages.includes(firstLine.toLowerCase())) {
+    messageClarity += 5;
+  }
 
-  if (!isWeakMessage) {
+  // -----------------------------
+  // Meaningfulness - 20
+  // -----------------------------
+  let meaningfulness = 0;
+
+  if (!vagueMessages.includes(firstLine.toLowerCase())) {
     meaningfulness += 10;
   }
 
@@ -94,65 +76,46 @@ export function analyzeCommitMessage(message: string) {
     meaningfulness += 5;
   }
 
-  if (
-    /\b(api|database|ui|frontend|backend|auth|login|bug|feature|component|function|route|performance)\b/i.test(
-      firstLine
-    )
-  ) {
+  const technicalKeywords =
+    /\b(api|database|db|ui|frontend|backend|auth|login|signup|bug|feature|component|function|route|performance|dashboard|github|commit|resume|leetcode|score|validation|error|fix|deploy|deployment)\b/i;
+
+  if (technicalKeywords.test(firstLine)) {
     meaningfulness += 5;
   }
 
-  // -------------------------------
-  // 3. CONVENTIONAL FORMAT
-  // -------------------------------
-
+  // -----------------------------
+  // Conventional Commit - 20
+  // -----------------------------
   let conventionalFormat = 0;
 
   const conventionalCommit =
-    /^(feat|fix|docs|style|refactor|test|chore|perf|build|ci)(\(.+\))?:\s+/i;
+    /^(feat|fix|docs|style|refactor|test|chore|perf|build|ci)(\([^)]+\))?:\s+\S+/i;
 
   if (conventionalCommit.test(firstLine)) {
     conventionalFormat = 20;
   }
 
-  // -------------------------------
-  // 4. COMMIT LENGTH
-  // -------------------------------
-
+  // -----------------------------
+  // Commit Length - 20
+  // -----------------------------
   let commitLength = 0;
 
-  if (firstLine.length >= 10) {
-    commitLength += 5;
-  }
+  if (firstLine.length >= 10) commitLength += 5;
+  if (firstLine.length >= 20) commitLength += 5;
+  if (firstLine.length >= 30) commitLength += 5;
+  if (firstLine.length <= 72) commitLength += 5;
 
-  if (firstLine.length >= 20) {
-    commitLength += 5;
-  }
-
-  if (firstLine.length >= 30) {
-    commitLength += 5;
-  }
-
-  if (firstLine.length <= 72) {
-    commitLength += 5;
-  }
-
-  // -------------------------------
-  // 5. ACTION CLARITY
-  // -------------------------------
-
+  // -----------------------------
+  // Action Clarity - 20
+  // -----------------------------
   let actionClarity = 0;
 
   const actionWords =
-    /^(add|added|create|created|implement|implemented|fix|fixed|update|updated|remove|removed|refactor|refactored|improve|improved|handle|handled|support|change|changed|optimize|optimized)\b/i;
+    /^(add|added|create|created|implement|implemented|fix|fixed|update|updated|remove|removed|refactor|refactored|improve|improved|handle|handled|support|supported|change|changed|optimize|optimized|build|built|configure|configured|integrate|integrated|upgrade|upgraded)\b/i;
 
   if (actionWords.test(firstLine)) {
     actionClarity = 20;
   }
-
-  // -------------------------------
-  // TOTAL
-  // -------------------------------
 
   const total =
     messageClarity +
@@ -171,20 +134,15 @@ export function analyzeCommitMessage(message: string) {
   };
 }
 
-// =====================================================
-// ANALYZE ALL COMMITS
-// =====================================================
-
 export function analyzeCommits(
   commits: Commit[]
 ): CommitStats {
-  if (!commits || commits.length === 0) {
+  if (!Array.isArray(commits) || commits.length === 0) {
     return {
       totalCommits: 0,
       goodCommits: 0,
       weakCommits: 0,
       qualityScore: 0,
-
       messageClarity: 0,
       meaningfulness: 0,
       conventionalFormat: 0,
@@ -194,7 +152,6 @@ export function analyzeCommits(
   }
 
   let totalScore = 0;
-
   let totalMessageClarity = 0;
   let totalMeaningfulness = 0;
   let totalConventionalFormat = 0;
@@ -206,11 +163,10 @@ export function analyzeCommits(
 
   commits.forEach((commit) => {
     const result = analyzeCommitMessage(
-      commit.commit.message
+      commit?.commit?.message ?? ""
     );
 
     totalScore += result.total;
-
     totalMessageClarity += result.messageClarity;
     totalMeaningfulness += result.meaningfulness;
     totalConventionalFormat += result.conventionalFormat;
@@ -228,14 +184,10 @@ export function analyzeCommits(
 
   return {
     totalCommits: count,
-
     goodCommits,
-
     weakCommits,
 
-    qualityScore: Math.round(
-      totalScore / count
-    ),
+    qualityScore: Math.round(totalScore / count),
 
     messageClarity: Math.round(
       totalMessageClarity / count
