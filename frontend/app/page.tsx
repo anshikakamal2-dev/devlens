@@ -600,15 +600,17 @@ export default function Home() {
   // LOAD AUTHENTICATED GITHUB DATA
   // ==========================================================
 
-  async function loadGithubData() {
-    try {
-      setLoading(true);
-      setError("");
+useEffect(() => {
+  let cancelled = false;
 
-      const [
-        userResponse,
-        repoResponse,
-      ] = await Promise.all([
+  const loadGithubData = async () => {
+    try {
+      if (!cancelled) {
+        setLoading(true);
+        setError("");
+      }
+
+      const [userResponse, repoResponse] = await Promise.all([
         fetch("/api/github/user", {
           cache: "no-store",
         }),
@@ -618,27 +620,18 @@ export default function Home() {
         }),
       ]);
 
-      const userData =
-        await userResponse
-          .json()
-          .catch(() => ({}));
-
-      const repoData =
-        await repoResponse
-          .json()
-          .catch(() => ({}));
+      const userData = await userResponse.json().catch(() => ({}));
+      const repoData = await repoResponse.json().catch(() => ({}));
 
       if (!userResponse.ok) {
         throw new Error(
-          userData?.error ||
-            "Unable to fetch GitHub user."
+          userData?.error || "Unable to fetch GitHub user."
         );
       }
 
       if (!repoResponse.ok) {
         throw new Error(
-          repoData?.error ||
-            "Unable to fetch GitHub repositories."
+          repoData?.error || "Unable to fetch GitHub repositories."
         );
       }
 
@@ -648,28 +641,36 @@ export default function Home() {
           ? repoData.repositories
           : [];
 
-      setUser(userData);
-      setRepositories(repos);
+      if (!cancelled) {
+        setUser(userData);
+        setRepositories(repos);
+      }
     } catch (err) {
-      console.error(
-        "GitHub loading error:",
-        err
-      );
+      console.error("GitHub loading error:", err);
 
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to load GitHub data."
-      );
+      if (!cancelled) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Unable to load GitHub data."
+        );
+      }
     } finally {
-      setLoading(false);
+      if (!cancelled) {
+        setLoading(false);
+      }
     }
-  }
+  };
 
-  useEffect(() => {
-    loadGithubData();
-  }, []);
+  loadGithubData();
 
+  return () => {
+    cancelled = true;
+  };
+}, []);
+
+
+  
   // ==========================================================
   // FETCH REPOSITORY COMMITS
   // ==========================================================
