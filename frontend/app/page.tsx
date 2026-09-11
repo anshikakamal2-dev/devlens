@@ -1021,14 +1021,13 @@ useEffect(() => {
         file
       );
 
-      const response = await fetch(
-        `${API_BASE_URL}/api/resume/analyze`,
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
-
+const response = await fetch(
+  "https://devlens-ocr.onrender.com/api/resume/analyze",
+  {
+    method: "POST",
+    body: formData,
+  }
+);
       const data =
         await response
           .json()
