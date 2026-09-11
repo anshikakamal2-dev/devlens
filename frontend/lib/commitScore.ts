@@ -1,13 +1,16 @@
 export interface Commit {
   sha: string;
+
   commit: {
     message: string;
+
     author?: {
       name?: string;
       email?: string;
       date?: string;
     };
   };
+
   html_url: string;
 }
 
@@ -23,8 +26,26 @@ export interface CommitStats {
   actionClarity: number;
 }
 
-export function analyzeCommitMessage(message: string) {
-  const firstLine = message?.split("\n")[0]?.trim() ?? "";
+const vagueMessages = new Set([
+  "update",
+  "updated",
+  "changes",
+  "change",
+  "stuff",
+  "work",
+  "test",
+  "testing",
+  "done",
+  "misc",
+  "miscellaneous",
+  "wip",
+]);
+
+export function analyzeCommitMessage(
+  message: string
+) {
+  const firstLine =
+    message?.split("\n")[0]?.trim() ?? "";
 
   if (!firstLine) {
     return {
@@ -37,92 +58,129 @@ export function analyzeCommitMessage(message: string) {
     };
   }
 
-  // -----------------------------
-  // Message Clarity - 20
-  // -----------------------------
+  const normalizedMessage =
+    firstLine
+      .toLowerCase()
+      .replace(/^[a-z]+\([^)]*\):\s*/i, "")
+      .replace(/^[a-z]+:\s*/i, "")
+      .trim();
+
+  const words = normalizedMessage
+    .split(/\s+/)
+    .filter(Boolean);
+
+  // --------------------------------------------------
+  // Message Clarity - 20 points
+  // --------------------------------------------------
+
   let messageClarity = 0;
 
-  if (firstLine.length >= 10) messageClarity += 5;
-  if (firstLine.length >= 20) messageClarity += 5;
-  if (firstLine.split(/\s+/).length >= 4) messageClarity += 5;
-
-  const vagueMessages = [
-    "update",
-    "updated",
-    "changes",
-    "change",
-    "stuff",
-    "work",
-    "test",
-    "testing",
-    "fix",
-    "done",
-  ];
-
-  if (!vagueMessages.includes(firstLine.toLowerCase())) {
+  if (firstLine.length >= 10) {
     messageClarity += 5;
   }
 
-  // -----------------------------
-  // Meaningfulness - 20
-  // -----------------------------
+  if (firstLine.length >= 20) {
+    messageClarity += 5;
+  }
+
+  if (words.length >= 4) {
+    messageClarity += 5;
+  }
+
+  if (
+    !vagueMessages.has(normalizedMessage)
+  ) {
+    messageClarity += 5;
+  }
+
+  // --------------------------------------------------
+  // Meaningfulness - 20 points
+  // --------------------------------------------------
+
   let meaningfulness = 0;
 
-  if (!vagueMessages.includes(firstLine.toLowerCase())) {
+  if (
+    !vagueMessages.has(normalizedMessage)
+  ) {
     meaningfulness += 10;
   }
 
-  if (firstLine.split(/\s+/).length >= 5) {
+  if (words.length >= 5) {
+    meaningfulness += 5;
+  }
+const technicalKeywords =
+  /\b(api|database|db|ui|frontend|backend|auth|login|signup|bug|feature|component|function|route|performance|dashboard|github|commit|resume|leetcode|score|validation|error|deploy|deployment|test|testing|refactor|cache|schema)\b/i;
+  
+
+  if (technicalKeywords.test(normalizedMessage)) {
     meaningfulness += 5;
   }
 
-  const technicalKeywords =
-    /\b(api|database|db|ui|frontend|backend|auth|login|signup|bug|feature|component|function|route|performance|dashboard|github|commit|resume|leetcode|score|validation|error|fix|deploy|deployment)\b/i;
+  // --------------------------------------------------
+  // Conventional Commit - 20 points
+  // --------------------------------------------------
 
-  if (technicalKeywords.test(firstLine)) {
-    meaningfulness += 5;
-  }
-
-  // -----------------------------
-  // Conventional Commit - 20
-  // -----------------------------
   let conventionalFormat = 0;
 
   const conventionalCommit =
-    /^(feat|fix|docs|style|refactor|test|chore|perf|build|ci)(\([^)]+\))?:\s+\S+/i;
+    /^(feat|fix|docs|style|refactor|test|chore|perf|build|ci)(\([^)]+\))?!?:\s+\S+/i;
 
   if (conventionalCommit.test(firstLine)) {
     conventionalFormat = 20;
   }
 
-  // -----------------------------
-  // Commit Length - 20
-  // -----------------------------
+  // --------------------------------------------------
+  // Commit Length - 20 points
+  // --------------------------------------------------
+
   let commitLength = 0;
 
-  if (firstLine.length >= 10) commitLength += 5;
-  if (firstLine.length >= 20) commitLength += 5;
-  if (firstLine.length >= 30) commitLength += 5;
-  if (firstLine.length <= 72) commitLength += 5;
+  if (firstLine.length >= 10) {
+    commitLength += 5;
+  }
 
-  // -----------------------------
-  // Action Clarity - 20
-  // -----------------------------
+  if (firstLine.length >= 20) {
+    commitLength += 5;
+  }
+
+  if (firstLine.length >= 30) {
+    commitLength += 5;
+  }
+
+  if (firstLine.length <= 72) {
+    commitLength += 5;
+  }
+
+  // --------------------------------------------------
+  // Action Clarity - 20 points
+  // --------------------------------------------------
+
   let actionClarity = 0;
 
   const actionWords =
-    /^(add|added|create|created|implement|implemented|fix|fixed|update|updated|remove|removed|refactor|refactored|improve|improved|handle|handled|support|supported|change|changed|optimize|optimized|build|built|configure|configured|integrate|integrated|upgrade|upgraded)\b/i;
+    /^(add|added|create|created|implement|implemented|fix|fixed|update|updated|remove|removed|refactor|refactored|improve|improved|handle|handled|support|supported|change|changed|optimize|optimized|build|built|configure|configured|integrate|integrated|upgrade|upgraded|introduce|introduced|replace|replaced|remove|removed|enable|enabled|disable|disabled)\b/i;
 
-  if (actionWords.test(firstLine)) {
-    actionClarity = 20;
+  if (actionWords.test(normalizedMessage)) {
+    actionClarity += 15;
   }
 
-  const total =
+  // A clear object after the action is a useful signal.
+  if (words.length >= 3) {
+    actionClarity += 5;
+  }
+
+  // --------------------------------------------------
+  // Final Score
+  // --------------------------------------------------
+
+  const total = Math.min(
     messageClarity +
-    meaningfulness +
-    conventionalFormat +
-    commitLength +
-    actionClarity;
+      meaningfulness +
+      conventionalFormat +
+      commitLength +
+      actionClarity,
+    100
+  );
 
   return {
     messageClarity,
@@ -130,14 +188,17 @@ export function analyzeCommitMessage(message: string) {
     conventionalFormat,
     commitLength,
     actionClarity,
-    total: Math.min(total, 100),
+    total,
   };
 }
 
 export function analyzeCommits(
   commits: Commit[]
 ): CommitStats {
-  if (!Array.isArray(commits) || commits.length === 0) {
+  if (
+    !Array.isArray(commits) ||
+    commits.length === 0
+  ) {
     return {
       totalCommits: 0,
       goodCommits: 0,
@@ -169,7 +230,8 @@ export function analyzeCommits(
     totalScore += result.total;
     totalMessageClarity += result.messageClarity;
     totalMeaningfulness += result.meaningfulness;
-    totalConventionalFormat += result.conventionalFormat;
+    totalConventionalFormat +=
+      result.conventionalFormat;
     totalCommitLength += result.commitLength;
     totalActionClarity += result.actionClarity;
 
@@ -187,7 +249,9 @@ export function analyzeCommits(
     goodCommits,
     weakCommits,
 
-    qualityScore: Math.round(totalScore / count),
+    qualityScore: Math.round(
+      totalScore / count
+    ),
 
     messageClarity: Math.round(
       totalMessageClarity / count

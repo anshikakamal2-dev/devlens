@@ -166,11 +166,11 @@ function getScoreLabel(score: number): string {
     return "Excellent";
   }
 
-  if (score >= 70) {
+  if (score >= 75) {
     return "Strong";
   }
 
-  if (score >= 55) {
+  if (score >= 60) {
     return "Good";
   }
 
@@ -204,53 +204,83 @@ function getScoreTextClass(score: number): string {
 // ============================================================
 // LEETCODE SCORE
 // ============================================================
-
 function calculateLeetCodeScore(
   stats: LeetCodeStats
 ): number {
-  const solvedScore = Math.min(
-    safeNumber(stats.total_solved) * 0.15,
-    45
-  );
+  const easy = safeNumber(stats.easy);
+  const medium = safeNumber(stats.medium);
+  const hard = safeNumber(stats.hard);
+  const totalSolved = safeNumber(stats.total_solved);
 
+  // --------------------------------------------------
+  // Difficulty Score - 70 points
+  // --------------------------------------------------
+
+  // Easy: max 10 points
   const easyScore = Math.min(
-    safeNumber(stats.easy) * 0.1,
-    10
+    10,
+    (easy / 75) * 10
   );
 
+  // Medium: max 35 points
   const mediumScore = Math.min(
-    safeNumber(stats.medium) * 0.2,
-    20
+    35,
+    (medium / 100) * 35
   );
 
+  // Hard: max 25 points
   const hardScore = Math.min(
-    safeNumber(stats.hard) * 0.4,
-    15
+    25,
+    (hard / 40) * 25
   );
+
+  // --------------------------------------------------
+  // Problem-Solving Volume - 20 points
+  // --------------------------------------------------
+
+  const volumeScore = Math.min(
+    20,
+    (totalSolved / 300) * 20
+  );
+
+  // --------------------------------------------------
+  // Ranking Bonus - 10 points
+  // --------------------------------------------------
 
   const ranking = safeNumber(stats.ranking);
 
-  const rankingScore =
-    ranking > 0
-      ? Math.max(
-          0,
-          Math.min(
-            10,
-            10 - Math.log10(Math.max(1, ranking))
-          )
+  let rankingScore = 0;
+
+  if (ranking > 0) {
+    rankingScore = Math.max(
+      0,
+      Math.min(
+        10,
+        10 * (
+          1 -
+          Math.log10(
+            Math.max(1, ranking)
+          ) / 6
         )
-      : 0;
+      )
+    );
+  }
+
+  // --------------------------------------------------
+  // Final Score
+  // --------------------------------------------------
 
   return Math.round(
     clamp(
-      solvedScore +
-        easyScore +
+      easyScore +
         mediumScore +
         hardScore +
+        volumeScore +
         rankingScore
     )
   );
 }
+
 
 // ============================================================
 // DEVELOPER SCORE

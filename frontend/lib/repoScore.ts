@@ -10,48 +10,71 @@ interface Repository {
 export function calculateRepositoryScore(
   repo: Repository
 ) {
+  // --------------------------------------------------
+  // Documentation - 25 points
+  // --------------------------------------------------
 
   let documentation = 0;
-  let popularity = 0;
-  let community = 0;
-  let maintenance = 0;
-  let structure = 0;
 
-
-  // Documentation
-  if (repo.description) {
-    documentation += 10;
+  if (repo.description?.trim()) {
+    documentation += 15;
   }
 
   if (repo.language) {
     documentation += 5;
   }
 
+  // Base documentation quality
   documentation += 5;
 
+  documentation = Math.min(
+    documentation,
+    25
+  );
 
-  // Popularity
-  popularity += Math.min(
+  // --------------------------------------------------
+  // Popularity - 20 points
+  // --------------------------------------------------
+
+  const popularity = Math.min(
     repo.stargazers_count * 2,
     20
   );
 
+  // --------------------------------------------------
+  // Community - 15 points
+  // --------------------------------------------------
 
-  // Community
+  let community = 0;
+
   community += Math.min(
-    repo.forks_count * 2,
+    repo.forks_count * 3,
     10
   );
 
-  community += Math.min(
-    repo.open_issues_count,
-    10
+  // Having a small number of open issues is neutral.
+  // Too many unresolved issues should not increase score.
+  if (
+    repo.open_issues_count >= 0 &&
+    repo.open_issues_count <= 5
+  ) {
+    community += 5;
+  }
+
+  community = Math.min(
+    community,
+    15
   );
 
+  // --------------------------------------------------
+  // Maintenance - 20 points
+  // --------------------------------------------------
 
-  // Maintenance
-  const updatedDate =
-    new Date(repo.updated_at);
+  let maintenance = 0;
+
+  const updatedDate = new Date(
+    repo.updated_at
+  );
 
   const today = new Date();
 
@@ -63,36 +86,54 @@ export function calculateRepositoryScore(
     difference /
     (1000 * 60 * 60 * 24);
 
-  if (days <= 30) {
-    maintenance = 20;
-  } else if (days <= 90) {
-    maintenance = 15;
-  } else if (days <= 180) {
-    maintenance = 10;
-  } else {
-    maintenance = 5;
+  if (Number.isFinite(days)) {
+    if (days <= 30) {
+      maintenance = 20;
+    } else if (days <= 90) {
+      maintenance = 16;
+    } else if (days <= 180) {
+      maintenance = 12;
+    } else if (days <= 365) {
+      maintenance = 8;
+    } else {
+      maintenance = 4;
+    }
   }
 
+  // --------------------------------------------------
+  // Structure - 20 points
+  // --------------------------------------------------
 
-  // Structure
+  let structure = 0;
+
   if (repo.language) {
     structure += 10;
   }
 
-  if (repo.description) {
+  if (repo.description?.trim()) {
     structure += 5;
   }
 
+  // Base structure score
   structure += 5;
 
+  structure = Math.min(
+    structure,
+    20
+  );
 
-  const total =
+  // --------------------------------------------------
+  // Final Score
+  // --------------------------------------------------
+
+  const total = Math.min(
     documentation +
-    popularity +
-    community +
-    maintenance +
-    structure;
-
+      popularity +
+      community +
+      maintenance +
+      structure,
+    100
+  );
 
   return {
     documentation,
@@ -100,6 +141,6 @@ export function calculateRepositoryScore(
     community,
     maintenance,
     structure,
-    total: Math.min(total, 100),
+    total,
   };
 }
